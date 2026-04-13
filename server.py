@@ -25,6 +25,11 @@ SUMMARIZER_MODEL_NAME = os.getenv("SUMMARIZER_MODEL_NAME", "google/flan-t5-small
 SUMMARY_INPUT_TOKENS = int(os.getenv("SUMMARY_INPUT_TOKENS", "384"))
 SUMMARY_MAX_NEW_TOKENS = int(os.getenv("SUMMARY_MAX_NEW_TOKENS", "96"))
 YTDLP_COOKIES_FILE = os.getenv("YTDLP_COOKIES_FILE", "").strip()
+YTDLP_FORMAT_CANDIDATES = [
+    "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
+    "bestaudio/best",
+    "best",
+]
 
 app = FastAPI(title="Whisper YouTube Summarizer")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -64,9 +69,13 @@ def cleanup_with_stem(stem: str) -> None:
             item.unlink()
 
 
-def get_ytdlp_options(output_template: str, cookie_file: Path | None = None) -> dict:
+def get_ytdlp_options(
+    output_template: str,
+    cookie_file: Path | None = None,
+    format_selector: str | None = None,
+) -> dict:
     ydl_options = {
-        "format": "bestaudio/best",
+        "format": format_selector or YTDLP_FORMAT_CANDIDATES[0],
         "outtmpl": output_template,
         "noplaylist": True,
         "quiet": True,
@@ -100,6 +109,10 @@ def prepare_ytdlp_cookie_copy(file_stem: str) -> Path | None:
     cookie_copy_path = TEMP_DIR / f"{file_stem}.cookies.txt"
     shutil.copy2(source_cookie_path, cookie_copy_path)
     return cookie_copy_path
+
+
+def is_unavailable_format_error(message: str) -> bool:
+    return "Requested format is not available" in message
 
 
 def get_summary_components():
@@ -295,26 +308,46 @@ def download_youtube_audio(url: str) -> tuple[Path, dict, str]:
     file_stem = uuid.uuid4().hex
     output_template = str(TEMP_DIR / f"{file_stem}.%(ext)s")
     cookie_copy_path = prepare_ytdlp_cookie_copy(file_stem)
-
-    ydl_options = get_ytdlp_options(output_template, cookie_copy_path)
+    info = None
+    last_error_message = ""
 
     try:
-        with yt_dlp.YoutubeDL(ydl_options) as downloader:
-            info = downloader.extract_info(normalized_url, download=True)
-    except yt_dlp.utils.DownloadError as exc:
-        message = str(exc)
-        if "Sign in to confirm you're not a bot" in message:
-            if YTDLP_COOKIES_FILE:
-                raise ValueError(
-                    "YouTube blocked the request even with the configured cookies file. "
-                    "Refresh the exported YouTube cookies on the VPS and try again."
-                ) from exc
+        for format_selector in YTDLP_FORMAT_CANDIDATES:
+            ydl_options = get_ytdlp_options(
+                output_template,
+                cookie_copy_path,
+                format_selector,
+            )
+            try:
+                with yt_dlp.YoutubeDL(ydl_options) as downloader:
+                    info = downloader.extract_info(normalized_url, download=True)
+                break
+            except yt_dlp.utils.DownloadError as exc:
+                message = str(exc)
+                last_error_message = message
+
+                if "Sign in to confirm you're not a bot" in message:
+                    if YTDLP_COOKIES_FILE:
+                        raise ValueError(
+                            "YouTube blocked the request even with the configured cookies file. "
+                            "Refresh the exported YouTube cookies on the VPS and try again."
+                        ) from exc
+                    raise ValueError(
+                        "YouTube is asking for a bot-check. Export your YouTube cookies to a "
+                        "cookies.txt file, mount it into the container, and set YTDLP_COOKIES_FILE "
+                        "to that path."
+                    ) from exc
+
+                if is_unavailable_format_error(message):
+                    continue
+
+                raise ValueError(f"yt-dlp failed to download the video: {message}") from exc
+
+        if info is None:
             raise ValueError(
-                "YouTube is asking for a bot-check. Export your YouTube cookies to a "
-                "cookies.txt file, mount it into the container, and set YTDLP_COOKIES_FILE "
-                "to that path."
-            ) from exc
-        raise ValueError(f"yt-dlp failed to download the video: {message}") from exc
+                "yt-dlp could not find a downloadable format for this video. "
+                f"Last error: {last_error_message}"
+            )
     finally:
         cleanup_path(cookie_copy_path)
 
