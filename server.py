@@ -25,6 +25,11 @@ SUMMARIZER_MODEL_NAME = os.getenv("SUMMARIZER_MODEL_NAME", "google/flan-t5-small
 SUMMARY_INPUT_TOKENS = int(os.getenv("SUMMARY_INPUT_TOKENS", "384"))
 SUMMARY_MAX_NEW_TOKENS = int(os.getenv("SUMMARY_MAX_NEW_TOKENS", "96"))
 YTDLP_COOKIES_FILE = os.getenv("YTDLP_COOKIES_FILE", "").strip()
+YTDLP_REMOTE_COMPONENTS = {
+    component.strip()
+    for component in os.getenv("YTDLP_REMOTE_COMPONENTS", "ejs:github").split(",")
+    if component.strip()
+}
 YTDLP_FORMAT_CANDIDATES = [
     "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
     "bestaudio/best",
@@ -91,6 +96,8 @@ def get_ytdlp_options(
 
     if cookie_file is not None:
         ydl_options["cookiefile"] = str(cookie_file)
+    if YTDLP_REMOTE_COMPONENTS:
+        ydl_options["remote_components"] = set(YTDLP_REMOTE_COMPONENTS)
 
     return ydl_options
 
@@ -452,4 +459,5 @@ def health_check():
         "summarizer_model": SUMMARIZER_MODEL_NAME,
         "summarizer_loaded": summary_model is not None,
         "youtube_cookies_configured": bool(YTDLP_COOKIES_FILE),
+        "youtube_remote_components": sorted(YTDLP_REMOTE_COMPONENTS),
     }

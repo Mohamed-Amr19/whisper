@@ -5,4 +5,4 @@ faster-whisper
 torch
 transformers
 sentencepiece
-yt-dlp
+yt-dlp[default] @ https://github.com/yt-dlp/yt-dlp/archive/master.tar.gz
