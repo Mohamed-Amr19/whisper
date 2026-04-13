@@ -24,6 +24,7 @@ WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 SUMMARIZER_MODEL_NAME = os.getenv("SUMMARIZER_MODEL_NAME", "google/flan-t5-small")
 SUMMARY_INPUT_TOKENS = int(os.getenv("SUMMARY_INPUT_TOKENS", "384"))
 SUMMARY_MAX_NEW_TOKENS = int(os.getenv("SUMMARY_MAX_NEW_TOKENS", "96"))
+YTDLP_COOKIES_FILE = os.getenv("YTDLP_COOKIES_FILE", "").strip()
 
 app = FastAPI(title="Whisper YouTube Summarizer")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -61,6 +62,34 @@ def cleanup_with_stem(stem: str) -> None:
     for item in TEMP_DIR.glob(f"{stem}.*"):
         if item.is_file():
             item.unlink()
+
+
+def get_ytdlp_options(output_template: str) -> dict:
+    ydl_options = {
+        "format": "bestaudio/best",
+        "outtmpl": output_template,
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ],
+    }
+
+    if YTDLP_COOKIES_FILE:
+        cookie_path = Path(YTDLP_COOKIES_FILE)
+        if not cookie_path.exists():
+            raise ValueError(
+                f"Configured cookie file was not found: {cookie_path}. "
+                "Update YTDLP_COOKIES_FILE or mount the file into the container."
+            )
+        ydl_options["cookiefile"] = str(cookie_path)
+
+    return ydl_options
 
 
 def get_summary_components():
@@ -256,23 +285,25 @@ def download_youtube_audio(url: str) -> tuple[Path, dict, str]:
     file_stem = uuid.uuid4().hex
     output_template = str(TEMP_DIR / f"{file_stem}.%(ext)s")
 
-    ydl_options = {
-        "format": "bestaudio/best",
-        "outtmpl": output_template,
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }
-        ],
-    }
+    ydl_options = get_ytdlp_options(output_template)
 
-    with yt_dlp.YoutubeDL(ydl_options) as downloader:
-        info = downloader.extract_info(normalized_url, download=True)
+    try:
+        with yt_dlp.YoutubeDL(ydl_options) as downloader:
+            info = downloader.extract_info(normalized_url, download=True)
+    except yt_dlp.utils.DownloadError as exc:
+        message = str(exc)
+        if "Sign in to confirm you're not a bot" in message:
+            if YTDLP_COOKIES_FILE:
+                raise ValueError(
+                    "YouTube blocked the request even with the configured cookies file. "
+                    "Refresh the exported YouTube cookies on the VPS and try again."
+                ) from exc
+            raise ValueError(
+                "YouTube is asking for a bot-check. Export your YouTube cookies to a "
+                "cookies.txt file, mount it into the container, and set YTDLP_COOKIES_FILE "
+                "to that path."
+            ) from exc
+        raise ValueError(f"yt-dlp failed to download the video: {message}") from exc
 
     audio_path = (TEMP_DIR / file_stem).with_suffix(".mp3")
     if not audio_path.exists():
@@ -374,4 +405,5 @@ def health_check():
         "transcription_model": WHISPER_MODEL_SIZE,
         "summarizer_model": SUMMARIZER_MODEL_NAME,
         "summarizer_loaded": summary_model is not None,
+        "youtube_cookies_configured": bool(YTDLP_COOKIES_FILE),
     }

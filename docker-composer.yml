@@ -4,6 +4,12 @@ services:
     ports:
       - "8000:8000"
     restart: always
+    environment:
+      # Optional: exported YouTube cookies for yt-dlp bot checks
+      # Set this to the path inside the container if you mount a cookies.txt file below
+      # YTDLP_COOKIES_FILE: /run/secrets/youtube-cookies.txt
     volumes:
       # Optional: Persist huggingface cache so you don't re-download models on rebuild
       - ./hf_cache:/root/.cache/huggingface
+      # Optional: mount your exported YouTube cookies file
+      # - ./secrets/youtube-cookies.txt:/run/secrets/youtube-cookies.txt:ro
