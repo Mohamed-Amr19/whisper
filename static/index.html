@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Whisper YouTube Summarizer</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero-card">
+        <p class="eyebrow">YouTube to transcript to summary</p>
+        <h1>Paste a video link and turn speech into readable notes.</h1>
+        <p class="hero-copy">
+          This app downloads the audio, transcribes it with Whisper, and can
+          summarize the transcript whenever you want.
+        </p>
+      </section>
+
+      <section class="workspace-card">
+        <label class="field-label" for="youtubeUrl">YouTube URL</label>
+        <div class="input-row">
+          <input
+            id="youtubeUrl"
+            name="youtubeUrl"
+            type="url"
+            placeholder="https://www.youtube.com/watch?v=..."
+            autocomplete="off"
+          />
+          <button id="transcribeButton" class="button primary" type="button">
+            Transcribe
+          </button>
+          <button id="transcribeAndSummarizeButton" class="button accent" type="button">
+            Transcribe + Summarize
+          </button>
+        </div>
+
+        <div id="statusBanner" class="status-banner idle">
+          Ready for a link.
+        </div>
+
+        <div class="info-grid">
+          <article class="info-card">
+            <p class="info-label">Video</p>
+            <p id="videoTitle" class="info-value muted">No video loaded yet.</p>
+          </article>
+          <article class="info-card">
+            <p class="info-label">Channel</p>
+            <p id="videoChannel" class="info-value muted">Waiting for transcript.</p>
+          </article>
+          <article class="info-card">
+            <p class="info-label">Transcript</p>
+            <p id="transcriptMeta" class="info-value muted">0 words</p>
+          </article>
+          <article class="info-card">
+            <p class="info-label">Summary</p>
+            <p id="summaryMeta" class="info-value muted">Not generated</p>
+          </article>
+        </div>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Transcript</p>
+              <h2>Editable text</h2>
+            </div>
+            <button id="summarizeButton" class="button secondary" type="button" disabled>
+              Summarize Transcript
+            </button>
+          </div>
+          <textarea
+            id="transcriptText"
+            spellcheck="false"
+            placeholder="The transcript will appear here after transcription."
+          ></textarea>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Summary</p>
+              <h2>Condensed notes</h2>
+            </div>
+          </div>
+          <div id="summaryText" class="summary-output muted">
+            No summary yet. Transcribe a video first, then generate it on demand.
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/static/main.js"></script>
+  </body>
+</html>

@@ -1,7 +1,7 @@
 FROM python:3.10-slim
 
-# Install FFmpeg (Required for audio processing)
-RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+# Install FFmpeg and runtime libraries required by ML dependencies
+RUN apt-get update && apt-get install -y ffmpeg libgomp1 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY server.py .
+COPY static ./static
 
 # Expose the port
 EXPOSE 8000
