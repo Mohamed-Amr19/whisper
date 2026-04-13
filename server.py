@@ -64,7 +64,7 @@ def cleanup_with_stem(stem: str) -> None:
             item.unlink()
 
 
-def get_ytdlp_options(output_template: str) -> dict:
+def get_ytdlp_options(output_template: str, cookie_file: Path | None = None) -> dict:
     ydl_options = {
         "format": "bestaudio/best",
         "outtmpl": output_template,
@@ -80,16 +80,26 @@ def get_ytdlp_options(output_template: str) -> dict:
         ],
     }
 
-    if YTDLP_COOKIES_FILE:
-        cookie_path = Path(YTDLP_COOKIES_FILE)
-        if not cookie_path.exists():
-            raise ValueError(
-                f"Configured cookie file was not found: {cookie_path}. "
-                "Update YTDLP_COOKIES_FILE or mount the file into the container."
-            )
-        ydl_options["cookiefile"] = str(cookie_path)
+    if cookie_file is not None:
+        ydl_options["cookiefile"] = str(cookie_file)
 
     return ydl_options
+
+
+def prepare_ytdlp_cookie_copy(file_stem: str) -> Path | None:
+    if not YTDLP_COOKIES_FILE:
+        return None
+
+    source_cookie_path = Path(YTDLP_COOKIES_FILE)
+    if not source_cookie_path.exists():
+        raise ValueError(
+            f"Configured cookie file was not found: {source_cookie_path}. "
+            "Update YTDLP_COOKIES_FILE or mount the file into the container."
+        )
+
+    cookie_copy_path = TEMP_DIR / f"{file_stem}.cookies.txt"
+    shutil.copy2(source_cookie_path, cookie_copy_path)
+    return cookie_copy_path
 
 
 def get_summary_components():
@@ -284,8 +294,9 @@ def download_youtube_audio(url: str) -> tuple[Path, dict, str]:
 
     file_stem = uuid.uuid4().hex
     output_template = str(TEMP_DIR / f"{file_stem}.%(ext)s")
+    cookie_copy_path = prepare_ytdlp_cookie_copy(file_stem)
 
-    ydl_options = get_ytdlp_options(output_template)
+    ydl_options = get_ytdlp_options(output_template, cookie_copy_path)
 
     try:
         with yt_dlp.YoutubeDL(ydl_options) as downloader:
@@ -304,6 +315,8 @@ def download_youtube_audio(url: str) -> tuple[Path, dict, str]:
                 "to that path."
             ) from exc
         raise ValueError(f"yt-dlp failed to download the video: {message}") from exc
+    finally:
+        cleanup_path(cookie_copy_path)
 
     audio_path = (TEMP_DIR / file_stem).with_suffix(".mp3")
     if not audio_path.exists():
